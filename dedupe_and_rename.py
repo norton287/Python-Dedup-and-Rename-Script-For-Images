@@ -3,8 +3,10 @@ import os
 import cv2
 import logging
 import time
+import gzip
+import shutil
+from datetime import datetime, timedelta
 from skimage.metrics import structural_similarity as ssim
-from datetime import datetime
 
 # Configure logging
 log_file = "/var/log/dedupe.log"
@@ -134,6 +136,28 @@ def sanity_check(directory, extensions):
             except Exception as e:
                 logging.error(f"Error renaming file {image_path} during sanity check: {e}")
 
+def handle_log_file():
+    """Check the log file size and compress if over 1MB, also clean up old gzipped logs."""
+    if os.path.exists(log_file) and os.path.getsize(log_file) > 1 * 1024 * 1024:  # 1MB
+        timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+        gzip_filename = f"/var/log/dedupe-{timestamp}.gz"
+        with open(log_file, 'rb') as f_in, gzip.open(gzip_filename, 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out)
+        os.remove(log_file)
+        open(log_file, 'a').close()
+        os.chmod(log_file, 0o644)
+        logging.info(f"Compressed log file to {gzip_filename}")
+
+    cutoff_date = datetime.now() - timedelta(days=10)
+    for root, _, files in os.walk('/var/log'):
+        for file in files:
+            if file.startswith('dedupe-') and file.endswith('.gz'):
+                file_path = os.path.join(root, file)
+                file_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+                if file_time < cutoff_date:
+                    os.remove(file_path)
+                    logging.info(f"Removed old log file {file_path}")
+
 def main():
     directory = "path/to/your/image/directory"
     extensions = (".png", ".jpg", ".jpeg", ".bmp")
@@ -148,6 +172,8 @@ def main():
     logging.info("Starting sanity check process")
     sanity_check(directory, extensions)
     logging.info("Sanity check process completed")
+    logging.info("Handling log file")
+    handle_log_file()
 
 if __name__ == "__main__":
     main()
