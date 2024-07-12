@@ -2,6 +2,7 @@
 import os
 import cv2
 import logging
+import time
 from skimage.metrics import structural_similarity as ssim
 from datetime import datetime
 
